@@ -49,6 +49,7 @@ jobs:
         with:
           tag_name: latest-data
           name: Latest RL Stats
+          draft: false
           files: |
             stats.zip
             summary.csv
