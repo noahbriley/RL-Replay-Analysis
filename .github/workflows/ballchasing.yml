@@ -56,14 +56,4 @@ jobs:
             summary.csv
           generate_release_notes: false
 
-      # 8 ▸ Commit summary.csv back to repo (ZIP lives only in release)
-      - name: Commit updated CSV
-        uses: EndBug/add-and-commit@v9
-        with:
-          message: "Automated stats update"
-          add: summary.csv
-          empty_commit: true           # succeed even if no changes
-
-      # 9 ▸ Show a preview in logs (optional)
-      - name: Print CSV head
-        run: head -n 5 summary.csv || true
+      # 8 ▸ Commit summary.csv back
