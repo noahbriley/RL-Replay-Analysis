@@ -1,29 +1,50 @@
 name: Ballchasing nightly
 
 on:
+  # 23:15 America/Chicago == 04:15 UTC
   schedule:
-    - cron: '15 4 * * *'   # every day 04:15 UTC (≈ 23:15 CT)
-  workflow_dispatch:        # run on demand from the Actions tab
+    - cron: '15 4 * * *'
+  workflow_dispatch:        # manual trigger from Actions tab
 
 jobs:
   pull-and-commit:
     runs-on: ubuntu-latest
+
     env:
-      BC_TOKEN: ${{ secrets.BC_TOKEN }}
-      BC_GROUP_ID: ${{ secrets.BC_GROUP_ID }}
+      BC_TOKEN:       ${{ secrets.BC_TOKEN }}
+      BC_GROUP_ID:    ${{ secrets.BC_GROUP_ID }}
       BC_PLAYER_NAME: ${{ secrets.BC_PLAYER_NAME }}
+
     steps:
+      # 1) Check out repo
       - uses: actions/checkout@v4
 
+      # 2) Python runtime
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with:
+          python-version: '3.11'
 
+      # 3) Install deps
       - run: pip install -r requirements.txt
 
+      # 4) Pull replays ➜ summary.csv  +  stats/*.json
       - run: python download_stats.py
 
-      - name: Commit updated CSV
+      # 5) Zip the stats folder (quiet mode, recurse)
+      - name: Pack stats.zip
+        run: |
+          rm -f stats.zip                # remove previous run, if any
+          zip -qr stats.zip stats        # -q for quiet, -r recursive
+
+      # 6) Commit updated artefacts
+      - name: Commit CSV + ZIP
         uses: EndBug/add-and-commit@v9
         with:
-          message: "Automated stats update"
-          add: "summary.csv stats/*.json"
+          message: "Automated stats + ZIP update"
+          add: "summary.csv stats.zip"
+
+      # 7) (optional) Show a summary in job log
+      - name: Print CSV head
+        run: |
+          echo "First 5 lines of summary.csv"
+          head -n 5 summary.csv
