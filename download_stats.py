@@ -1,79 +1,85 @@
 #!/usr/bin/env python3
 """
-Download every replay in a Ballchasing group, archive the raw JSON,
-and build summary.csv with per‑player stats + win/loss for one player.
+Download every replay in a Ballchasing group, save raw JSON into stats/,
+and build summary.csv with win/loss metrics for one player.
 """
 
-# ── Imports ────────────────────────────────────────────────────────────
+# ── Imports ───────────────────────────────────────────────────────────
 import os
 import json
+import time
 from pathlib import Path
 
 import requests
 import pandas as pd
+from requests.exceptions import ReadTimeout, ConnectionError
 
-print(">>> script started")     # simple debug banner
+print(">>> script started")
 
-# ── Config from environment variables ──────────────────────────────────
+# ── Config from environment variables ────────────────────────────────
 TOKEN   = os.getenv("BC_TOKEN")          # 40‑char personal API token
 GROUP   = os.getenv("BC_GROUP_ID")       # e.g. replay-analysis-j2e0c8rw06
-PLAYER  = os.getenv("BC_PLAYER_NAME")    # exact in‑game name, e.g. 'n o a h'
+PLAYER  = os.getenv("BC_PLAYER_NAME")    # in‑game name, e.g. 'n o a h'
 
-if not TOKEN:
-    raise RuntimeError("BC_TOKEN env var is missing.")
-if not GROUP:
-    raise RuntimeError("BC_GROUP_ID env var is missing.")
-if not PLAYER:
-    raise RuntimeError("BC_PLAYER_NAME env var is missing.")
+if not all([TOKEN, GROUP, PLAYER]):
+    raise RuntimeError("BC_TOKEN, BC_GROUP_ID, BC_PLAYER_NAME must be set.")
 
-HEADERS = {"Authorization": TOKEN}
-OUT_DIR = Path("stats")
-OUT_DIR.mkdir(exist_ok=True)
+HEADERS   = {"Authorization": TOKEN}
+OUT_DIR   = Path("stats");  OUT_DIR.mkdir(exist_ok=True)
+TIMEOUT   = 90   # seconds per request
+MAX_RETRY = 4
 
-# ── Helper: list all replay IDs in the group ───────────────────────────
+# ── Helper: GET with retry + back‑off ────────────────────────────────
+def get_with_retry(url: str, **kwargs) -> requests.Response:
+    for attempt in range(1, MAX_RETRY + 1):
+        try:
+            return requests.get(url, timeout=TIMEOUT, **kwargs)
+        except (ReadTimeout, ConnectionError) as e:
+            if attempt == MAX_RETRY:
+                raise
+            print(f"⚠  {e} – retry {attempt}/{MAX_RETRY}")
+            time.sleep(2 * attempt)  # simple back‑off
+
+# ── Helper: list all replay IDs in a group (handles pagination) ──────
 def list_replays(group_id: str) -> list[str]:
-    """Return *all* replay IDs inside a group (handles pagination)."""
-    url = "https://ballchasing.com/api/replays"
-    params = {"group": group_id, "count": 200}   # 200 = max per page
+    url    = "https://ballchasing.com/api/replays"
+    params = {"group": group_id, "count": 200}
     ids: list[str] = []
 
     while True:
-        r = requests.get(url, headers=HEADERS, params=params, timeout=30)
+        r = get_with_retry(url, headers=HEADERS, params=params)
         r.raise_for_status()
         data = r.json()
 
-        # each element in data["list"] is one replay summary
         ids.extend(item["id"] for item in data["list"])
 
         next_url = data.get("next")
         if not next_url:
-            break                # no more pages
-        url, params = next_url, None   # follow the `next` link
+            break
+        url, params = next_url, None   # follow next page
 
     return ids
 
-# ── Helper: download full replay stats JSON ────────────────────────────
+# ── Helper: download full replay JSON ────────────────────────────────
 def fetch_replay(replay_id: str) -> dict:
     url = f"https://ballchasing.com/api/replays/{replay_id}"
-    r = requests.get(url, headers=HEADERS, timeout=30)
+    r   = get_with_retry(url, headers=HEADERS)
     r.raise_for_status()
     return r.json()
 
-# ── Helper: extract stats for the chosen player ────────────────────────
+# ── Helper: extract stats for the specified player ───────────────────
 def extract_player_stats(js: dict) -> dict:
     blue, orange = js["blue"], js["orange"]
 
-    # helper: total goals for a team
-    def goals(team):
+    def team_goals(team):
         return sum(p["stats"]["core"]["goals"] for p in team["players"])
 
     me_on_blue = any(p["name"] == PLAYER for p in blue["players"])
     your_team, other_team = (blue, orange) if me_on_blue else (orange, blue)
+    outcome = "win" if team_goals(your_team) > team_goals(other_team) else "loss"
 
-    outcome = "win" if goals(your_team) > goals(other_team) else "loss"
-
-    you = next(p for p in your_team["players"] if p["name"] == PLAYER)
-    s   = you["stats"]; b, m, d = s["boost"], s["movement"], s["demo"]
+    you  = next(p for p in your_team["players"] if p["name"] == PLAYER)
+    s    = you["stats"]; b, m, d = s["boost"], s["movement"], s["demo"]
 
     return {
         "id"        : js["id"],
@@ -88,7 +94,7 @@ def extract_player_stats(js: dict) -> dict:
         "avg_speed" : m["avg_speed"],
     }
 
-# ── Main routine ───────────────────────────────────────────────────────
+# ── Main routine ─────────────────────────────────────────────────────
 def main() -> None:
     ids = list_replays(GROUP)
     print(f"Found {len(ids)} replay(s) in group {GROUP}")
@@ -103,8 +109,8 @@ def main() -> None:
         pd.DataFrame(rows).to_csv("summary.csv", index=False)
         print(f"✓ {len(rows)} replays → summary.csv")
     else:
-        print("No replays downloaded (group empty?).")
+        print("No replays downloaded – group empty?")
 
-# ── Run script ─────────────────────────────────────────────────────────
+# ── Entrypoint ───────────────────────────────────────────────────────
 if __name__ == "__main__":
     main()
