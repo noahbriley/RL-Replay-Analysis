@@ -1,39 +1,29 @@
 name: Ballchasing on‑demand
 
-# ── Run ONLY when you manually trigger it from GitHub UI ──────────────
-on:
-  workflow_dispatch:
+on: { workflow_dispatch: {} }
 
 permissions:
-  contents: write            # allow the workflow to push commits & create releases
+  contents: write            # allow pushes & release uploads
 
 jobs:
   pull-and-publish:
     runs-on: ubuntu-latest
-
     env:
       BC_TOKEN:       ${{ secrets.BC_TOKEN }}
       BC_GROUP_ID:    ${{ secrets.BC_GROUP_ID }}
       BC_PLAYER_NAME: ${{ secrets.BC_PLAYER_NAME }}
 
     steps:
-      # 1 ▸ Check out repo
       - uses: actions/checkout@v4
 
-      # 2 ▸ Python
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
 
-      # 3 ▸ Install deps
       - run: pip install -r requirements.txt
-
-      # 4 ▸ Pull replays → summary.csv & stats/*.json
       - run: python download_stats.py
 
-      # 5 ▸ Ensure zip tool
       - run: sudo apt-get update && sudo apt-get install -y zip
 
-      # 6 ▸ Zip JSON
       - name: Pack stats.zip
         run: |
           rm -f stats.zip
@@ -41,11 +31,9 @@ jobs:
             zip -qr stats.zip stats
           fi
 
-      # 7 ▸ Upload CSV + ZIP to release "latest-data"
       - name: Upload artefacts to release
         uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
         with:
           tag_name: latest-data
           name: Latest RL Stats
@@ -56,7 +44,6 @@ jobs:
           generate_release_notes: false
           prerelease: false
 
-      # 8 ▸ Commit updated CSV back to repo
       - name: Commit updated CSV
         uses: EndBug/add-and-commit@v9
         with:
@@ -64,6 +51,5 @@ jobs:
           add: "summary.csv"
           allow_empty: true
 
-      # 9 ▸ Show a preview in logs (optional)
       - name: Print CSV head
         run: head -n 5 summary.csv || true
