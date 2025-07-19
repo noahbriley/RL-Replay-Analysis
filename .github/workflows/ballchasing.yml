@@ -1,29 +1,39 @@
 name: Ballchasing on‑demand
 
-on: { workflow_dispatch: {} }
+on:
+  workflow_dispatch: {}
 
 permissions:
-  contents: write            # allow pushes & release uploads
+  contents: write          # let the token push commits / create releases
 
 jobs:
   pull-and-publish:
     runs-on: ubuntu-latest
+
     env:
       BC_TOKEN:       ${{ secrets.BC_TOKEN }}
       BC_GROUP_ID:    ${{ secrets.BC_GROUP_ID }}
       BC_PLAYER_NAME: ${{ secrets.BC_PLAYER_NAME }}
 
     steps:
+      # 1 ▸ Check out repo
       - uses: actions/checkout@v4
 
+      # 2 ▸ Python 3.11
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with:
+          python-version: '3.11'
 
+      # 3 ▸ Install deps
       - run: pip install -r requirements.txt
+
+      # 4 ▸ Pull replays → summary.csv  +  stats/*.json
       - run: python download_stats.py
 
+      # 5 ▸ Ensure zip tool
       - run: sudo apt-get update && sudo apt-get install -y zip
 
+      # 6 ▸ Zip JSON folder (if it exists)
       - name: Pack stats.zip
         run: |
           rm -f stats.zip
@@ -31,25 +41,29 @@ jobs:
             zip -qr stats.zip stats
           fi
 
+      # 7 ▸ Upload CSV + ZIP to release “latest-data” (auto‑publish)
       - name: Upload artefacts to release
         uses: softprops/action-gh-release@v1
-        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: latest-data
           name: Latest RL Stats
-          draft: false
+          draft: false               # publish, not draft
           files: |
             stats.zip
             summary.csv
-          generate_release_notes: false
           prerelease: false
+          generate_release_notes: false
 
+      # 8 ▸ Commit summary.csv back to repo (ZIP stays in release)
       - name: Commit updated CSV
         uses: EndBug/add-and-commit@v9
         with:
           message: "Automated stats update"
-          add: "summary.csv"
-          allow_empty: true
+          add: summary.csv
+          allow_empty: true          # don’t fail if file unchanged
 
+      # 9 ▸ Show first 5 lines in log (optional)
       - name: Print CSV head
         run: head -n 5 summary.csv || true
