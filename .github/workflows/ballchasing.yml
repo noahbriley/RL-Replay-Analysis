@@ -1,13 +1,14 @@
-name: Ballchasing nightly
+name: Ballchasing on‑demand
 
+# ── Run ONLY when you manually trigger it from GitHub UI ──────────────
 on:
-  # 23:15 America/Chicago == 04:15 UTC
-  schedule:
-    - cron: '15 4 * * *'
-  workflow_dispatch:        # manual trigger from Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: write            # allow the workflow to push commits & create releases
 
 jobs:
-  pull-and-commit:
+  pull-and-publish:
     runs-on: ubuntu-latest
 
     env:
@@ -16,35 +17,52 @@ jobs:
       BC_PLAYER_NAME: ${{ secrets.BC_PLAYER_NAME }}
 
     steps:
-      # 1) Check out repo
+      # 1 ▸ Check out repo
       - uses: actions/checkout@v4
 
-      # 2) Python runtime
+      # 2 ▸ Python
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: { python-version: '3.11' }
 
-      # 3) Install deps
+      # 3 ▸ Install deps
       - run: pip install -r requirements.txt
 
-      # 4) Pull replays ➜ summary.csv  +  stats/*.json
+      # 4 ▸ Pull replays → summary.csv & stats/*.json
       - run: python download_stats.py
 
-      # 5) Zip the stats folder (quiet mode, recurse)
+      # 5 ▸ Ensure zip tool
+      - run: sudo apt-get update && sudo apt-get install -y zip
+
+      # 6 ▸ Zip JSON
       - name: Pack stats.zip
         run: |
-          rm -f stats.zip                # remove previous run, if any
-          zip -qr stats.zip stats        # -q for quiet, -r recursive
+          rm -f stats.zip
+          if [ -d stats ]; then
+            zip -qr stats.zip stats
+          fi
 
-      # 6) Commit updated artefacts
-      - name: Commit CSV + ZIP
+      # 7 ▸ Upload CSV + ZIP to release "latest-data"
+      - name: Upload artefacts to release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: latest-data
+          name: Latest RL Stats
+          files: |
+            stats.zip
+            summary.csv
+          generate_release_notes: false
+          prerelease: false
+
+      # 8 ▸ Commit updated CSV back to repo
+      - name: Commit updated CSV
         uses: EndBug/add-and-commit@v9
         with:
-          message: "Automated stats + ZIP update"
-          add: "summary.csv stats.zip"
+          message: "Automated stats update"
+          add: "summary.csv"
+          allow_empty: true
 
-      # 7) (optional) Show a summary in job log
+      # 9 ▸ Show a preview in logs (optional)
       - name: Print CSV head
-        run: |
-          echo "First 5 lines of summary.csv"
-          head -n 5 summary.csv
+        run: head -n 5 summary.csv || true
