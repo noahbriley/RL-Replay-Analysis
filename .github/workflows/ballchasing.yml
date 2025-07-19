@@ -37,11 +37,14 @@ jobs:
       - name: Pack stats.zip
         run: |
           rm -f stats.zip
-          if [ -d stats ]; then
+          if [ -d stats ] && [ "$(ls -A stats)" ]; then
             zip -qr stats.zip stats
+          else
+            echo "No JSON files to zip"
           fi
 
       # 7 ▸ Upload CSV + ZIP to published release “latest-data”
+      #     (optional – keep if you still want a release asset)
       - name: Upload artefacts to release
         uses: softprops/action-gh-release@v1
         env:
@@ -49,11 +52,23 @@ jobs:
         with:
           tag_name: latest-data
           name: Latest RL Stats
-          draft: false                 # ensure it’s published
-          prerelease: false            # not a pre‑release
+          draft: false
+          prerelease: false
           files: |
             stats.zip
             summary.csv
           generate_release_notes: false
 
-      # 8 ▸ Commit summary.csv back
+      # 8 ▸ Commit summary.csv + stats.zip back to the repo
+      - name: Commit updated artefacts
+        uses: EndBug/add-and-commit@v9
+        with:
+          message: "Automated stats update"
+          add: |
+            summary.csv
+            stats.zip
+            empty: true          # succeed even if nothing changed
+
+      # 9 ▸ Show a preview in logs (optional)
+      - name: Print CSV head
+        run: head -n 5 summary.csv || true
