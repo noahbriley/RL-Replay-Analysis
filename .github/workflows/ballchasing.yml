@@ -4,7 +4,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write          # allow the token to push commits & create releases
+  contents: write          # let the token push commits & create releases
 
 jobs:
   pull-and-publish:
@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # 3 ▸ Install dependencies
+      # 3 ▸ Install Python dependencies
       - run: pip install -r requirements.txt
 
       # 4 ▸ Pull replays → summary.csv + stats/*.json
@@ -44,7 +44,6 @@ jobs:
           fi
 
       # 7 ▸ Upload CSV + ZIP to published release “latest-data”
-      #     (optional – keep if you still want a release asset)
       - name: Upload artefacts to release
         uses: softprops/action-gh-release@v1
         env:
@@ -67,8 +66,8 @@ jobs:
           add: |
             summary.csv
             stats.zip
-            empty: true          # succeed even if nothing changed
+          commit: '--allow-empty'     # succeed even if nothing changed
 
-      # 9 ▸ Show a preview in logs (optional)
+      # 9 ▸ Show first 5 lines in log (optional)
       - name: Print CSV head
         run: head -n 5 summary.csv || true
