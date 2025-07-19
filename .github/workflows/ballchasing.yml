@@ -1,0 +1,29 @@
+name: Ballchasing nightly
+
+on:
+  schedule:
+    - cron: '15 4 * * *'   # every day 04:15 UTC (≈ 23:15 CT)
+  workflow_dispatch:        # run on demand from the Actions tab
+
+jobs:
+  pull-and-commit:
+    runs-on: ubuntu-latest
+    env:
+      BC_TOKEN: ${{ secrets.BC_TOKEN }}
+      BC_GROUP_ID: ${{ secrets.BC_GROUP_ID }}
+      BC_PLAYER_NAME: ${{ secrets.BC_PLAYER_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - run: pip install -r requirements.txt
+
+      - run: python download_stats.py
+
+      - name: Commit updated CSV
+        uses: EndBug/add-and-commit@v9
+        with:
+          message: "Automated stats update"
+          add: "summary.csv stats/*.json"
